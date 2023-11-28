@@ -14,5 +14,7 @@ namespace RestWebApiApp.Data
         public Task UpdateUserAsync(User user);
 
         public Task DeleteUserAsync(int userId);
+
+        public Task<User?> GetUserByRefToken(string refToken);
     }
 }

@@ -43,5 +43,10 @@ namespace RestWebApiApp.Data
                 await _context.SaveChangesAsync();
             }
         }
+
+        public async Task<User?> GetUserByRefToken(string refToken)
+        {
+            return await _context.Users.FirstOrDefaultAsync(u => u.RefreshToken == refToken);
+        }
     }
 }
