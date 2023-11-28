@@ -43,6 +43,21 @@ namespace RestWebApiApp.Controllers
                 Salt = salt
             });
 
+            var accessToken = TokenService.GenerateJwtToken(request.UserName, configuration["Jwt:Key"]);
+            var refreshToken = TokenService.GenerateRefreshToken();
+
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true
+            };
+
+            Response.Cookies.Append("access_token", accessToken, cookieOptions);
+            Response.Cookies.Append("refresh_token", refreshToken, new CookieOptions
+            {
+                Path = "/refresh",
+                HttpOnly = true
+            });
+
             return StatusCode(201);
         }
 
@@ -59,19 +74,23 @@ namespace RestWebApiApp.Controllers
                     var accessToken = TokenService.GenerateJwtToken(request.UserName, configuration["Jwt:Key"]);
                     var refreshToken = TokenService.GenerateRefreshToken();
 
+                    user.RefreshToken = refreshToken;
+                    user.RefreshTokenExpiryTime = DateTime.Now.AddDays(30);
+                    await userRep.UpdateUserAsync(user);
+
                     var cookieOptions = new CookieOptions
                     {
                         HttpOnly = true
                     };
 
                     Response.Cookies.Append("access_token", accessToken, cookieOptions);
-                    Response.Cookies.Append("refresh_token", refreshToken, cookieOptions);
-
-                    return Ok(new
+                    Response.Cookies.Append("refresh_token", refreshToken, new CookieOptions
                     {
-                        AccessToken = accessToken,
-                        RefreshToken = refreshToken
+                        Path = "/refresh",
+                        HttpOnly = true
                     });
+
+                    return Ok();
                 }
             }
 
@@ -79,19 +98,21 @@ namespace RestWebApiApp.Controllers
         }
 
         [HttpPost("/refresh")]
-        [Authorize]
-        public async Task<IActionResult> RefreshAccessToken()
+        public async Task<IActionResult> RefreshTokens()
         {
-            var username = User.Identity?.Name;
-            var user = await userRep.GetUserByUsernameAsync(username ?? String.Empty);
+            var refreshToken = Request.Cookies["refresh_token"];
+            var user = await userRep.GetUserByRefToken(refreshToken ?? String.Empty);
 
-            if (user != null) {
-                var refreshToken = Request.Cookies["refresh_token"];
-                var storedRefreshToken = user.RefreshToken;
-
-                if (storedRefreshToken != null && user.RefreshTokenExpiryTime > DateTime.UtcNow)
+            if (user != null)
+            {
+                if (user.RefreshTokenExpiryTime >= DateTime.UtcNow)
                 {
-                    var newAccessToken = TokenService.GenerateJwtToken(username, configuration["Jwt:Key"]);
+                    var newAccessToken = TokenService.GenerateJwtToken(user.UserName, configuration["Jwt:Key"]);
+                    var newRefreshToken = TokenService.GenerateRefreshToken();
+
+                    user.RefreshToken = newRefreshToken;
+                    user.RefreshTokenExpiryTime = DateTime.Now.AddDays(30);
+                    await userRep.UpdateUserAsync(user);
 
                     var cookieOptions = new CookieOptions
                     {
@@ -99,11 +120,13 @@ namespace RestWebApiApp.Controllers
                     };
 
                     Response.Cookies.Append("access_token", newAccessToken, cookieOptions);
-
-                    return Ok(new
+                    Response.Cookies.Append("refresh_token", newRefreshToken, new CookieOptions
                     {
-                        AccessToken = newAccessToken
+                        Path = "/refresh",
+                        HttpOnly = true
                     });
+
+                    return Ok();
                 }
             }
 
